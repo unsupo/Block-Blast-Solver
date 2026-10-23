@@ -1,0 +1,21 @@
+# Python & C++ Artifacts
+__pycache__/
+*.pyc
+*.dylib
+*.so
+.pytest_cache/
+.DS_Store
+
+# Flutter
+flutter_app/build/
+flutter_app/.dart_tool/
+flutter_app/.flutter-plugins
+flutter_app/.flutter-plugins-dependencies
+
+# Intermediate model weights (keep combo_best)
+ppo_block_blast_1m.pt
+ppo_block_blast_10m.pt
+ppo_block_blast_checkpoint.pt
+ppo_block_blast_combo_5m.pt
+ppo_block_blast_exact_rules.pt
+ppo_block_blast.pt
