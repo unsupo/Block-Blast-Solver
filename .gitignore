@@ -6,6 +6,7 @@ __pycache__/
 bench_cpp_100k
 monte_carlo_massive
 monte_carlo_results.json
+stacked_combos_data.json
 .pytest_cache/
 .DS_Store
 

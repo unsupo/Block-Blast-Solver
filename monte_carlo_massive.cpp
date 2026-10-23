@@ -11,8 +11,22 @@
 using namespace block_blast;
 
 // Configuration
-static const int DEFAULT_GAMES = 1000; // Can be 100000 via command line
+static const int DEFAULT_GAMES = 1000;
 static const int TARGET_SCORE = 100000;
+
+// 7 Exact DDA Stages
+// 0: 0 - 500       (Warmup / Safe)
+// 1: 500 - 1400    (DDA Tier 1: 12% Hard)
+// 2: 1400 - 3800   (DDA Tier 2: 20% Hard)
+// 3: 3800 - 8400   (DDA Tier 3: 30% Hard - Max Ramp)
+// 4: 8400 - 25000  (Post-8.4k DDA Ceiling: 40% Hard Initial)
+// 5: 25000 - 50000 (Post-8.4k DDA Ceiling: 40% Hard Mid)
+// 6: 50000+        (Post-8.4k DDA Ceiling: 40% Hard Deep)
+static const int NUM_STAGES = 7;
+
+// 8 Discrete Combo Bins: 0, 1, 2, 3, 4, 5, 6, 7+
+static const int NUM_COMBOS = 8;
+static const int NUM_OCC = 8;
 
 struct WipeEvent {
     int game_id;
@@ -30,23 +44,23 @@ std::atomic<int> g_near_miss_count{0};
 std::vector<WipeEvent> g_wipe_events;
 std::mutex g_wipe_mutex;
 
-// Histograms: [score_bracket (0..7)][occupancy_tier (0..7)]
-// Score brackets: 0-1k, 1k-5k, 5k-15k, 15k-30k, 30k-50k, 50k-75k, 75k-100k, 100k+
-// Occupancy tiers: 0 (All Clear), 1-4 (Near Miss), 5-10, 11-18, 19-26, 27-34, 35-42, 43+
 struct Histogram {
-    uint64_t occ[8][8] = {{0}};
-    uint64_t combo[8][7] = {{0}}; // combo tiers: 0, 1x, 2-3x, 4-5x, 6-8x, 9-12x, 13x+
+    uint64_t occ[NUM_STAGES][NUM_OCC] = {{0}};
+    uint64_t combo[NUM_STAGES][NUM_COMBOS] = {{0}};
+    uint64_t runs_reached[NUM_STAGES] = {0};
+    uint64_t stage_moves[NUM_STAGES] = {0};
+    uint64_t stage_clears[NUM_STAGES] = {0};
+    uint64_t stage_near_misses[NUM_STAGES] = {0};
 };
 
-static inline int getScoreTier(int s) {
-    if (s < 1000) return 0;
-    if (s < 5000) return 1;
-    if (s < 15000) return 2;
-    if (s < 30000) return 3;
-    if (s < 50000) return 4;
-    if (s < 75000) return 5;
-    if (s < 100000) return 6;
-    return 7;
+static inline int getDDAStage(int s) {
+    if (s < 500) return 0;
+    if (s < 1400) return 1;
+    if (s < 3800) return 2;
+    if (s < 8400) return 3;
+    if (s < 25000) return 4;
+    if (s < 50000) return 5;
+    return 6;
 }
 
 static inline int getOccTier(int filled) {
@@ -60,21 +74,23 @@ static inline int getOccTier(int filled) {
     return 7;
 }
 
-static inline int getComboTier(int c) {
-    if (c == 0) return 0;
+static inline int getComboBin(int c) {
+    if (c <= 0) return 0;
     if (c == 1) return 1;
-    if (c <= 3) return 2;
-    if (c <= 5) return 3;
-    if (c <= 8) return 4;
-    if (c <= 12) return 5;
-    return 6;
+    if (c == 2) return 2;
+    if (c == 3) return 3;
+    if (c == 4) return 4;
+    if (c == 5) return 5;
+    if (c == 6) return 6;
+    return 7; // 7+
 }
 
 void workerThread(int start_game, int end_game, Histogram* out_hist) {
     for (int g = start_game; g < end_game; ++g) {
-        uint64_t seed = 1000003ULL + (uint64_t)g * 7919ULL;
+        uint64_t seed = 2000003ULL + (uint64_t)g * 7919ULL;
         BitboardEngine engine(seed);
         int step = 0;
+        bool stage_visited[NUM_STAGES] = {false};
 
         while (!engine.terminated && engine.score < TARGET_SCORE) {
             int act = engine.getBestActionSearch();
@@ -87,20 +103,28 @@ void workerThread(int start_game, int end_game, Histogram* out_hist) {
             int c = engine.combo;
             int filled = __builtin_popcountll(engine.board);
 
-            int s_tier = getScoreTier(s);
+            int stage = getDDAStage(s);
             int o_tier = getOccTier(filled);
-            int c_tier = getComboTier(c);
+            int c_bin = getComboBin(c);
 
-            out_hist->occ[s_tier][o_tier]++;
-            out_hist->combo[s_tier][c_tier]++;
+            if (!stage_visited[stage]) {
+                stage_visited[stage] = true;
+                out_hist->runs_reached[stage]++;
+            }
+
+            out_hist->occ[stage][o_tier]++;
+            out_hist->combo[stage][c_bin]++;
+            out_hist->stage_moves[stage]++;
 
             if (filled == 0) {
                 g_all_clear_count++;
+                out_hist->stage_clears[stage]++;
                 std::lock_guard<std::mutex> lock(g_wipe_mutex);
                 g_wipe_events.push_back({g, step, s, c, filled});
                 std::cout << "\n>>> [ALL CLEAR DETECTED] Game #" << g + 1 << " | Step " << step << " | Score " << s << " | Combo " << c << std::endl;
             } else if (filled <= 3) {
                 g_near_miss_count++;
+                out_hist->stage_near_misses[stage]++;
             }
         }
 
@@ -119,8 +143,9 @@ int main(int argc, char* argv[]) {
     if (num_threads < 1) num_threads = 8;
 
     std::cout << "================================================================" << std::endl;
-    std::cout << "  BLOCK BLAST MASSIVE MONTE CARLO SIMULATION ENGINE" << std::endl;
-    std::cout << "  Target: " << total_games << " games reaching " << TARGET_SCORE << " points" << std::endl;
+    std::cout << "  BLOCK BLAST DDA-STAGE & STACKED COMBO SIMULATION ENGINE" << std::endl;
+    std::cout << "  Target Games: " << total_games << " to " << TARGET_SCORE << " points" << std::endl;
+    std::cout << "  DDA Stages: 0-500, 500-1.4k, 1.4k-3.8k, 3.8k-8.4k, 8.4k-25k, 25k-50k, 50k-100k+" << std::endl;
     std::cout << "  Threads: " << num_threads << " hardware cores" << std::endl;
     std::cout << "================================================================" << std::endl;
 
@@ -136,8 +161,7 @@ int main(int argc, char* argv[]) {
         threads.emplace_back(workerThread, start_g, end_g, &thread_hists[t]);
     }
 
-    // Monitor thread with periodic snapshot saves
-    int last_saved_games = 0;
+    // Monitor thread
     while (g_completed_games.load() < total_games) {
         std::this_thread::sleep_for(std::chrono::seconds(5));
         int done = g_completed_games.load();
@@ -156,41 +180,6 @@ int main(int argc, char* argv[]) {
                   << "Near-misses: " << g_near_miss_count.load() << " | "
                   << "ETA: " << (int)(eta_sec / 60) << "m " << ((int)eta_sec % 60) << "s"
                   << std::endl;
-
-        // Periodic snapshot save every 250 games
-        if (done - last_saved_games >= 250) {
-            last_saved_games = done;
-            Histogram snap_hist;
-            for (int t = 0; t < num_threads; ++t) {
-                for (int s = 0; s < 8; ++s) {
-                    for (int o = 0; o < 8; ++o) snap_hist.occ[s][o] += thread_hists[t].occ[s][o];
-                    for (int c = 0; c < 7; ++c) snap_hist.combo[s][c] += thread_hists[t].combo[s][c];
-                }
-            }
-            std::ofstream snap_ofs("monte_carlo_results.json");
-            snap_ofs << "{\n";
-            snap_ofs << "  \"total_games\": " << done << ",\n";
-            snap_ofs << "  \"total_moves\": " << moves << ",\n";
-            snap_ofs << "  \"total_all_clears\": " << g_all_clear_count.load() << ",\n";
-            snap_ofs << "  \"total_near_misses\": " << g_near_miss_count.load() << ",\n";
-            snap_ofs << "  \"elapsed_seconds\": " << elapsed << ",\n";
-            snap_ofs << "  \"occupancy_table\": [\n";
-            for (int s = 0; s < 8; ++s) {
-                snap_ofs << "    [";
-                for (int o = 0; o < 8; ++o) snap_ofs << snap_hist.occ[s][o] << (o == 7 ? "" : ", ");
-                snap_ofs << "]" << (s == 7 ? "" : ",\n");
-            }
-            snap_ofs << "\n  ],\n";
-            snap_ofs << "  \"combo_table\": [\n";
-            for (int s = 0; s < 8; ++s) {
-                snap_ofs << "    [";
-                for (int c = 0; c < 7; ++c) snap_ofs << snap_hist.combo[s][c] << (c == 6 ? "" : ", ");
-                snap_ofs << "]" << (s == 7 ? "" : ",\n");
-            }
-            snap_ofs << "\n  ]\n";
-            snap_ofs << "}\n";
-            snap_ofs.close();
-        }
     }
 
     for (auto& th : threads) {
@@ -205,54 +194,83 @@ int main(int argc, char* argv[]) {
     std::cout << "Total Moves: " << g_total_moves.load() << std::endl;
     std::cout << "Total Time: " << total_sec << "s (" << (g_total_moves.load() / total_sec) << " moves/sec)" << std::endl;
     std::cout << "Total All-Clears: " << g_all_clear_count.load() << std::endl;
-    std::cout << "Total Near-Misses: " << g_near_miss_count.load() << std::endl;
 
-    // Combine histograms
+    // Combine thread histograms
     Histogram total_hist;
     for (int t = 0; t < num_threads; ++t) {
-        for (int s = 0; s < 8; ++s) {
-            for (int o = 0; o < 8; ++o) total_hist.occ[s][o] += thread_hists[t].occ[s][o];
-            for (int c = 0; c < 7; ++c) total_hist.combo[s][c] += thread_hists[t].combo[s][c];
+        for (int s = 0; s < NUM_STAGES; ++s) {
+            total_hist.runs_reached[s] += thread_hists[t].runs_reached[s];
+            total_hist.stage_moves[s] += thread_hists[t].stage_moves[s];
+            total_hist.stage_clears[s] += thread_hists[t].stage_clears[s];
+            total_hist.stage_near_misses[s] += thread_hists[t].stage_near_misses[s];
+            for (int o = 0; o < NUM_OCC; ++o) total_hist.occ[s][o] += thread_hists[t].occ[s][o];
+            for (int c = 0; c < NUM_COMBOS; ++c) total_hist.combo[s][c] += thread_hists[t].combo[s][c];
         }
     }
 
-    // Save summary results to JSON for plotting
-    std::ofstream ofs("monte_carlo_results.json");
+    // Write to JSON for plotting
+    std::ofstream ofs("stacked_combos_data.json");
     ofs << "{\n";
     ofs << "  \"total_games\": " << total_games << ",\n";
     ofs << "  \"total_moves\": " << g_total_moves.load() << ",\n";
     ofs << "  \"total_all_clears\": " << g_all_clear_count.load() << ",\n";
     ofs << "  \"total_near_misses\": " << g_near_miss_count.load() << ",\n";
     ofs << "  \"elapsed_seconds\": " << total_sec << ",\n";
-    ofs << "  \"occupancy_table\": [\n";
-    for (int s = 0; s < 8; ++s) {
-        ofs << "    [";
-        for (int o = 0; o < 8; ++o) {
-            ofs << total_hist.occ[s][o] << (o == 7 ? "" : ", ");
-        }
-        ofs << "]" << (s == 7 ? "" : ",\n");
+    ofs << "  \"stages\": [\"0-500\", \"500-1.4k\", \"1.4k-3.8k\", \"3.8k-8.4k\", \"8.4k-25k\", \"25k-50k\", \"50k-100k+\"],\n";
+    ofs << "  \"combo_names\": [\"Combo 0\", \"Combo 1\", \"Combo 2\", \"Combo 3\", \"Combo 4\", \"Combo 5\", \"Combo 6\", \"Combo 7+\"],\n";
+    
+    // Runs reached per stage
+    ofs << "  \"runs_reached\": [";
+    for (int s = 0; s < NUM_STAGES; ++s) {
+        ofs << total_hist.runs_reached[s] << (s == NUM_STAGES - 1 ? "" : ", ");
     }
-    ofs << "\n  ],\n";
+    ofs << "],\n";
+
+    // Stage moves
+    ofs << "  \"stage_moves\": [";
+    for (int s = 0; s < NUM_STAGES; ++s) {
+        ofs << total_hist.stage_moves[s] << (s == NUM_STAGES - 1 ? "" : ", ");
+    }
+    ofs << "],\n";
+
+    // Stage clears
+    ofs << "  \"stage_clears\": [";
+    for (int s = 0; s < NUM_STAGES; ++s) {
+        ofs << total_hist.stage_clears[s] << (s == NUM_STAGES - 1 ? "" : ", ");
+    }
+    ofs << "],\n";
+
+    // Stage near misses
+    ofs << "  \"stage_near_misses\": [";
+    for (int s = 0; s < NUM_STAGES; ++s) {
+        ofs << total_hist.stage_near_misses[s] << (s == NUM_STAGES - 1 ? "" : ", ");
+    }
+    ofs << "],\n";
+
+    // Combo table [stage][combo_bin]
     ofs << "  \"combo_table\": [\n";
-    for (int s = 0; s < 8; ++s) {
+    for (int s = 0; s < NUM_STAGES; ++s) {
         ofs << "    [";
-        for (int c = 0; c < 7; ++c) {
-            ofs << total_hist.combo[s][c] << (c == 6 ? "" : ", ");
+        for (int c = 0; c < NUM_COMBOS; ++c) {
+            ofs << total_hist.combo[s][c] << (c == NUM_COMBOS - 1 ? "" : ", ");
         }
-        ofs << "]" << (s == 7 ? "" : ",\n");
+        ofs << "]" << (s == NUM_STAGES - 1 ? "" : ",\n");
     }
     ofs << "\n  ],\n";
-    ofs << "  \"wipe_events\": [\n";
-    for (size_t i = 0; i < g_wipe_events.size(); ++i) {
-        const auto& w = g_wipe_events[i];
-        ofs << "    {\"game_id\": " << w.game_id << ", \"step\": " << w.step
-            << ", \"score\": " << w.score << ", \"combo\": " << w.combo << "}"
-            << (i + 1 == g_wipe_events.size() ? "" : ",\n");
+
+    // Occupancy table [stage][occ_tier]
+    ofs << "  \"occupancy_table\": [\n";
+    for (int s = 0; s < NUM_STAGES; ++s) {
+        ofs << "    [";
+        for (int o = 0; o < NUM_OCC; ++o) {
+            ofs << total_hist.occ[s][o] << (o == NUM_OCC - 1 ? "" : ", ");
+        }
+        ofs << "]" << (s == NUM_STAGES - 1 ? "" : ",\n");
     }
     ofs << "\n  ]\n";
     ofs << "}\n";
     ofs.close();
 
-    std::cout << "Data saved to monte_carlo_results.json" << std::endl;
+    std::cout << "Data saved to stacked_combos_data.json" << std::endl;
     return 0;
 }
