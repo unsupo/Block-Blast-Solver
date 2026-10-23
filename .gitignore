@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 *.dylib
 *.so
+bench_cpp_100k
+monte_carlo_massive
+monte_carlo_results.json
 .pytest_cache/
 .DS_Store
 
