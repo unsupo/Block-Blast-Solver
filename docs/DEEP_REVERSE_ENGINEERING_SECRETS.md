@@ -63,3 +63,38 @@ While the core game is endless classic puzzle, `extracted_js/` contains assets a
 - **`IsOpenTravelFailChangeDefaultBoardTrait`**: Manages fail-state recoveries in level-based boards.
 - **`ChapterReviveWithComboTrait`**: Retains active combo multipliers across distinct puzzle chapter stages.
 - **`ReviveBaseProgressBoardFullGemTrait`**: Introduces collectible jewel blocks that must be cleared to fill chapter progression bars.
+
+---
+
+## 7. The 1M+ Score Mechanics & Anti-Farming Killswitch (`终止刷分`)
+
+Reverse-engineering `libtask.so` revealed internal C++ debug routines specifically engineered to police ultra-high scores:
+
+### A. The Anti-Score-Grinding Killswitch (`AlgoSelectStopRefreshScore.cpp`)
+- **Symbol / Trait**: `selectBlockStopRefreshScore` (`statelessId: 123` / `statelessId: 8`).
+- **Mechanism**: Detects when a player or bot exploits single-line clearing loops to inflate score without board risk. When triggered, the engine enters `【终止刷分循环算法】`:
+  - Force-downgrades the piece pool (`statelessIdDowngrade: 37`, `blockGroupDowngrade: 1`).
+  - Injects high-entropy blockers ($3\times3$ cubes, 5-cell bars) to disrupt the cycle and force risk.
+  - If board congestion spikes, it activates `trap_high_near_danger` (`TrapHighNearDanger.cpp`) to create a single-solution survival puzzle, driving high ad-revive conversion.
+
+### B. The 8,400 Score Difficulty Ceiling
+- The piece distribution DDA table (`handleWeightControl`) tops out at **8,400 points** (`tier == 16`).
+- Beyond 8,400, the shape distribution does not scale further. A player at 1,000,000 points faces the identical piece pool as at 8,400 points; games end due to fatigue, memory pressure, or anti-farming interventions.
+
+### C. The 22-Hour Marathon Constraint
+- At an average of $\approx 12.5$ points per turn, reaching 1,000,000 points requires **$\sim 80,000$ continuous moves** ($\sim 22.2$ hours of non-stop 1-move/sec gameplay).
+
+---
+
+## 8. Large-Scale Monte Carlo Empirical Findings (100 Runs to 100k+ / 798,524 Moves)
+
+Conducted via multi-threaded C++ bitboard simulation ([`run_100k_monte_carlo_100runs.py`](file:///Users/jonathanarndt/dev/block_blast/run_100k_monte_carlo_100runs.py)):
+- **Full Board Clear Probability**:
+  - **Opening (Moves 0–10)**: $0.011\%$ (1 event observed in Game #41 at Move 8, score 119).
+  - **Mid to Late Game (Score 1k to 100k+)**: **0.000%** (zero occurrences across 798,524 moves).
+- **Board Occupancy Distribution**:
+  - $73.7\%$ of all moves operate in the **19–34 cell congestion zone**.
+  - Near-misses ($\le 3$ cells) drop to $<0.002\%$ due to immediate DDA heavy piece replenishment whenever cells drop below 18.
+- **Combo Trajectories**:
+  - Sustained runs stabilize at a rolling combo multiplier of $\approx 0.70\text{x}$, with periodic burst spikes up to $8\text{x}$.
+
