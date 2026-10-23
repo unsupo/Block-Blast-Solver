@@ -16,7 +16,10 @@ Comprehensive technical documentation is stored in the [`docs/`](file:///Users/j
 6. [**Flutter UI/UX & Game Feel ("Juice") Specification**](file:///Users/jonathanarndt/dev/block_blast/docs/FLUTTER_UI_UX_DESIGN.md): Visual styling, 3D jelly block rendering, touch drag physics with finger offset, real-time ghost snapping, and particle blast animation pipelines.
 7. [**Skin & Color Dynamics Specification**](file:///Users/jonathanarndt/dev/block_blast/docs/SKIN_AND_COLOR_DYNAMICS.md): Reverse-engineered rules for theme progression, 6 authentic board palettes, combo blue diamond badge, and All Clear skin triggers.
 8. [**Monetization & Ad Strategy Specification**](file:///Users/jonathanarndt/dev/block_blast/docs/MONETIZATION_AND_AD_STRATEGY.md): 100% IAA business model, rewarded video "Revive" loops, DDA-to-Ad harvesting funnel, and churn-prediction cohort telemetry.
-9. [**Deep Reverse Engineering Discoveries**](file:///Users/jonathanarndt/dev/block_blast/docs/DEEP_REVERSE_ENGINEERING_SECRETS.md): Pentatonic musical audio engine, the `hasLiveWay` near-miss guarantee, iOS vs Android entropy tuning, and ambient visual juice traits.
+9. [**Deep Reverse Engineering Discoveries**](file:///Users/jonathanarndt/dev/block_blast/docs/DEEP_REVERSE_ENGINEERING_SECRETS.md): Pentatonic musical audio engine, the `hasLiveWay` near-miss guarantee, iOS vs Android entropy tuning, anti-farming killswitch (`终止刷分`), and ambient visual juice traits.
+10. [**Mathematical Proof: Inevitable Loss Under Optimal Play**](file:///Users/jonathanarndt/dev/block_blast/docs/MATHEMATICAL_PROOF_OPTIMAL_PLAY_LOSS.md): Rigorous proof establishing non-existence of a controlled invariant set, per-turn failure hazard rate $\lambda \approx 1.50 \times 10^{-6}$, and empirical 500-game failure analysis.
+11. [**Survival Probability Decay Curve (300k & 1M Odds)**](file:///Users/jonathanarndt/dev/block_blast/docs/survival_probability_curve.png): Continuous exponential survival curves demonstrating why optimal play has a $96.5\%$ chance to reach 300k, $88.7\%$ to reach 1M, and a median lifespan of 5.77M points.
+12. [**DDA-Stage Stacked Combo Progression**](file:///Users/jonathanarndt/dev/block_blast/docs/stacked_combos_by_stage.png): Stacked bar chart proving that DDA difficulty scaling permanently plateaus at 8,400 points across 4,000,000 simulation steps.
 
 ---
 
