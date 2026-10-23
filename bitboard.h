@@ -447,6 +447,9 @@ public:
         int pts = SHAPES_RAW[sid].fill;
         if (lines > 0) {
             pts += 10 * lines * lines * (curr_combo + 1);
+            if (b_after == 0) {
+                pts += 25000; // Search incentive for achieving an All Clear
+            }
         }
         return pts;
     }
@@ -454,18 +457,28 @@ public:
     static inline float evaluateBoardTopology(uint64_t b, int curr_combo) {
         // Pillar 1: Full Board Clear (All Clear) Holy Grail Bonus
         // When b == 0, the entire board is wiped completely clean!
-        // Actively prioritize branches that produce full board wipes.
         if (b == 0) {
-            return 35000.0f;
+            return 60000.0f;
         }
 
         int filled = __builtin_popcountll(b);
         float eval = 0.0f;
 
-        // Near-Clear bonus: strongly incentivize clearing out the last few isolated blocks
-        if (filled <= 6) {
-            eval += (7 - filled) * 1500.0f;
+        // Near-Clear bonus: strongly incentivize driving filled cells down to 0
+        if (filled <= 12) {
+            eval += (13 - filled) * (13 - filled) * 200.0f;
         }
+
+        // Active lines span: reward clustering blocks into fewer rows/cols
+        int active_rows = 0;
+        for (int r = 0; r < 8; ++r) {
+            if (b & (0xFFULL << (r * 8))) active_rows++;
+        }
+        int active_cols = 0;
+        for (int c = 0; c < 8; ++c) {
+            if (b & (0x0101010101010101ULL << c)) active_cols++;
+        }
+        eval -= (active_rows + active_cols) * 60.0f;
 
         bool fit_3x3 = false;
         for (int i = 0; i < 36; ++i) {
