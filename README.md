@@ -14,6 +14,9 @@ Comprehensive technical documentation is stored in the [`docs/`](file:///Users/j
 4. [**RL & Gymnasium Design Specification**](file:///Users/jonathanarndt/dev/block_blast/docs/RL_GYM_DESIGN.md): Action space Discrete(192), Box(4, 8, 8) observation space, Invalid Action Masking theory, and PPO agent architecture.
 5. [**Flutter Client Architecture (FFI Integration)**](file:///Users/jonathanarndt/dev/block_blast/docs/FLUTTER_ARCHITECTURE.md): Multiplatform architecture using `dart:ffi` to connect Flutter directly to the C++ bitboard core (`bitboard.h`).
 6. [**Flutter UI/UX & Game Feel ("Juice") Specification**](file:///Users/jonathanarndt/dev/block_blast/docs/FLUTTER_UI_UX_DESIGN.md): Visual styling, 3D jelly block rendering, touch drag physics with finger offset, real-time ghost snapping, and particle blast animation pipelines.
+7. [**Skin & Color Dynamics Specification**](file:///Users/jonathanarndt/dev/block_blast/docs/SKIN_AND_COLOR_DYNAMICS.md): Reverse-engineered rules for theme progression, 6 authentic board palettes, combo blue diamond badge, and All Clear skin triggers.
+8. [**Monetization & Ad Strategy Specification**](file:///Users/jonathanarndt/dev/block_blast/docs/MONETIZATION_AND_AD_STRATEGY.md): 100% IAA business model, rewarded video "Revive" loops, DDA-to-Ad harvesting funnel, and churn-prediction cohort telemetry.
+9. [**Deep Reverse Engineering Discoveries**](file:///Users/jonathanarndt/dev/block_blast/docs/DEEP_REVERSE_ENGINEERING_SECRETS.md): Pentatonic musical audio engine, the `hasLiveWay` near-miss guarantee, iOS vs Android entropy tuning, and ambient visual juice traits.
 
 ---
 
